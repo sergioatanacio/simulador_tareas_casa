@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Tareas Domésticas (6 Minutos)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 class="text-2xl font-bold text-center mb-4">Simulador de Tareas Domésticas (6 Minutos)</h1>
+        <div id="estado" class="text-center mb-4">
+            <p id="tiempo" class="text-xl font-bold"></p>
+            <div class="mt-2">
+                <div class="bg-gray-200 rounded-full h-2.5 mb-1">
+                    <div id="energiaBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 100%"></div>
+                </div>
+                <p>Energía: <span id="energia">100</span>%</p>
+            </div>
+            <div class="mt-2">
+                <div class="bg-gray-200 rounded-full h-2.5 mb-1">
+                    <div id="hambreBar" class="bg-green-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p>Hambre: <span id="hambre">0</span>%</p>
+            </div>
+        </div>
+        <div id="tareaActual" class="hidden mb-4">
+            <p>Tarea actual: <span id="nombreTarea"></span></p>
+            <div class="bg-gray-200 rounded-full h-2.5 mt-2">
+                <div id="progresoTarea" class="bg-yellow-600 h-2.5 rounded-full" style="width: 0%"></div>
+            </div>
+        </div>
+        <div id="mensaje" class="hidden mb-4 p-4 bg-yellow-100 text-yellow-700 rounded-lg"></div>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+            <button id="descansar" class="bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Descansar (30 min)</button>
+            <button id="comer" class="bg-green-500 text-white p-2 rounded hover:bg-green-600">Comer (20 min)</button>
+        </div>
+        <div id="tareas" class="space-y-2 mb-4"></div>
+        <div class="mb-4">
+            <h3 class="font-bold mb-2">Agregar nueva tarea:</h3>
+            <input id="nuevaTareaNombre" type="text" placeholder="Nombre de la tarea" class="border p-2 w-full mb-2">
+            <div class="grid grid-cols-2 gap-2">
+                <input id="nuevaTareaDuracion" type="number" placeholder="Duración (min)" class="border p-2">
+                <input id="nuevaTareaEnergia" type="number" placeholder="Energía requerida" class="border p-2">
+            </div>
+            <button id="agregarTarea" class="bg-purple-500 text-white p-2 rounded hover:bg-purple-600 w-full mt-2">Agregar Tarea</button>
+        </div>
+        <div class="mb-4">
+            <h3 class="font-bold mb-2">Agregar nuevo evento inesperado:</h3>
+            <input id="nuevoEventoNombre" type="text" placeholder="Nombre del evento" class="border p-2 w-full mb-2">
+            <input id="nuevoEventoDuracion" type="number" placeholder="Duración (min)" class="border p-2 w-full">
+            <button id="agregarEvento" class="bg-orange-500 text-white p-2 rounded hover:bg-orange-600 w-full mt-2">Agregar Evento</button>
+        </div>
+        <div class="mt-4">
+            <h3 class="font-bold">Tareas completadas:</h3>
+            <ul id="tareasCompletadas" class="list-disc pl-5"></ul>
+        </div>
+    </div>
+
+    <script>
+        let tareasDomesticas = [
+            { id: 1, nombre: 'Vestirse', duracion: 10, energiaRequerida: 5, completada: false },
+            { id: 2, nombre: 'Bañarse', duracion: 15, energiaRequerida: 10, completada: false },
+            { id: 3, nombre: 'Cocinar', duracion: 30, energiaRequerida: 20, completada: false },
+            { id: 4, nombre: 'Lavar los platos', duracion: 15, energiaRequerida: 15, completada: false },
+            { id: 5, nombre: 'Barrer', duracion: 20, energiaRequerida: 25, completada: false }
+        ];
+
+        let eventosAleatorios = [
+            { nombre: 'Llamada telefónica urgente', duracion: 15 },
+            { nombre: 'Visita inesperada', duracion: 30 },
+            { nombre: 'Corte de energía', duracion: 45 },
+            { nombre: 'Mascota necesita atención', duracion: 20 }
+        ];
+
+        let tiempo = 480; // 8:00 AM
+        let tareaActual = null;
+        let tareasCompletadas = [];
+        let progresoTarea = 0;
+        let energia = 100;
+        let hambre = 0;
+        let evento = null;
+        let intervalId;
+
+        const DURACION_DIA = 6 * 60 * 1000; // 6 minutos en milisegundos
+        const INTERVALO_ACTUALIZACION = 100; // 100ms
+        const MINUTOS_POR_ACTUALIZACION = 1; // 1 minuto del juego por cada actualización
+
+        function actualizarUI() {
+            document.getElementById('tiempo').textContent = formatTiempo(tiempo);
+            document.getElementById('energia').textContent = energia;
+            document.getElementById('energiaBar').style.width = `${energia}%`;
+            document.getElementById('hambre').textContent = Math.round(hambre);
+            document.getElementById('hambreBar').style.width = `${hambre}%`;
+
+            const tareaActualElement = document.getElementById('tareaActual');
+            if (tareaActual || evento) {
+                tareaActualElement.classList.remove('hidden');
+                document.getElementById('nombreTarea').textContent = evento ? `Evento: ${evento.nombre}` : tareaActual.nombre;
+                const progreso = ((progresoTarea) / (evento ? evento.duracion : tareaActual.duracion)) * 100;
+                document.getElementById('progresoTarea').style.width = `${progreso}%`;
+            } else {
+                tareaActualElement.classList.add('hidden');
+            }
+
+            document.getElementById('tareasCompletadas').innerHTML = tareasCompletadas.map(tarea => 
+                `<li>${formatTiempo(tarea.tiempoCompletado)} - ${tarea.nombre}</li>`
+            ).join('');
+
+            actualizarBotonesTareas();
+
+            document.getElementById('descansar').disabled = !!tareaActual || !!evento;
+            document.getElementById('comer').disabled = !!tareaActual || !!evento;
+        }
+
+        function actualizarBotonesTareas() {
+            const tareasElement = document.getElementById('tareas');
+            tareasElement.innerHTML = '';
+            tareasDomesticas.forEach((tarea) => {
+                if (!tarea.completada) {
+                    const boton = document.createElement('button');
+                    boton.className = 'w-full text-left bg-purple-500 text-white p-2 rounded hover:bg-purple-600 mb-2';
+                    boton.innerHTML = `${tarea.nombre} (${tarea.duracion} min, ${tarea.energiaRequerida} energía)`;
+                    boton.onclick = () => iniciarTarea(tarea.id);
+                    boton.disabled = !!tareaActual || !!evento;
+                    tareasElement.appendChild(boton);
+                }
+            });
+        }
+
+        function formatTiempo(minutos) {
+            const horas = Math.floor(minutos / 60);
+            const mins = minutos % 60;
+            return `${horas.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        function iniciarTarea(id) {
+            if (tareaActual || evento) {
+                mostrarMensaje('Ya estás realizando una tarea o un evento está en progreso.');
+                return;
+            }
+            const tarea = tareasDomesticas.find(t => t.id === id);
+            if (energia < tarea.energiaRequerida) {
+                mostrarMensaje('No tienes suficiente energía para esta tarea. ¡Descansa un poco!');
+                return;
+            }
+            tareaActual = { ...tarea, tiempoInicio: tiempo };
+            progresoTarea = 0;
+            mostrarMensaje(`Iniciando tarea: ${tarea.nombre}`);
+            actualizarUI();
+        }
+
+        function descansar() {
+            if (tareaActual || evento) {
+                mostrarMensaje('No puedes descansar mientras realizas una tarea o durante un evento.');
+                return;
+            }
+            energia = Math.min(energia + 20, 100);
+            tiempo += 30;
+            mostrarMensaje('Has descansado y recuperado algo de energía.');
+            actualizarUI();
+        }
+
+        function comer() {
+            if (tareaActual || evento) {
+                mostrarMensaje('No puedes comer mientras realizas una tarea o durante un evento.');
+                return;
+            }
+            hambre = 0;
+            energia = Math.min(energia + 30, 100);
+            tiempo += 20;
+            mostrarMensaje('Has comido y recuperado energía.');
+            actualizarUI();
+        }
+
+        function mostrarMensaje(texto) {
+            const mensajeElement = document.getElementById('mensaje');
+            mensajeElement.textContent = texto;
+            mensajeElement.classList.remove('hidden');
+            setTimeout(() => {
+                mensajeElement.classList.add('hidden');
+            }, 3000);
+        }
+
+        function agregarTarea() {
+            const nombre = document.getElementById('nuevaTareaNombre').value;
+            const duracion = parseInt(document.getElementById('nuevaTareaDuracion').value);
+            const energiaRequerida = parseInt(document.getElementById('nuevaTareaEnergia').value);
+
+            if (nombre && duracion && energiaRequerida) {
+                const nuevoId = tareasDomesticas.length > 0 ? Math.max(...tareasDomesticas.map(t => t.id)) + 1 : 1;
+                tareasDomesticas.push({ id: nuevoId, nombre, duracion, energiaRequerida, completada: false });
+                actualizarUI();
+                document.getElementById('nuevaTareaNombre').value = '';
+                document.getElementById('nuevaTareaDuracion').value = '';
+                document.getElementById('nuevaTareaEnergia').value = '';
+                mostrarMensaje('Nueva tarea agregada exitosamente.');
+            } else {
+                mostrarMensaje('Por favor, completa todos los campos para agregar una nueva tarea.');
+            }
+        }
+
+        function agregarEvento() {
+            const nombre = document.getElementById('nuevoEventoNombre').value;
+            const duracion = parseInt(document.getElementById('nuevoEventoDuracion').value);
+
+            if (nombre && duracion) {
+                eventosAleatorios.push({ nombre, duracion });
+                mostrarMensaje('Nuevo evento agregado exitosamente.');
+                document.getElementById('nuevoEventoNombre').value = '';
+                document.getElementById('nuevoEventoDuracion').value = '';
+            } else {
+                mostrarMensaje('Por favor, completa todos los campos para agregar un nuevo evento.');
+            }
+        }
+
+        function iniciarSimulacion() {
+            document.getElementById('descansar').onclick = descansar;
+            document.getElementById('comer').onclick = comer;
+            document.getElementById('agregarTarea').onclick = agregarTarea;
+            document.getElementById('agregarEvento').onclick = agregarEvento;
+
+            actualizarUI();
+            actualizarBotonesTareas();
+
+            const tiempoInicio = Date.now();
+
+            intervalId = setInterval(() => {
+                const tiempoTranscurrido = Date.now() - tiempoInicio;
+                if (tiempoTranscurrido >= DURACION_DIA) {
+                    finalizarSimulacion();
+                    return;
+                }
+
+                tiempo += MINUTOS_POR_ACTUALIZACION;
+                hambre = Math.min(hambre + 0.5, 100);
+
+                if (tareaActual) {
+                    progresoTarea += MINUTOS_POR_ACTUALIZACION;
+                    if (progresoTarea >= tareaActual.duracion) {
+                        tareasCompletadas.push({...tareaActual, tiempoCompletado: tiempo});
+                        energia = Math.max(energia - tareaActual.energiaRequerida, 0);
+                        mostrarMensaje(`Tarea completada: ${tareaActual.nombre}`);
+                        const tareaCompletada = tareasDomesticas.find(t => t.id === tareaActual.id);
+                        if (tareaCompletada) {
+                            tareaCompletada.completada = true;
+                        }
+                        tareaActual = null;
+                        progresoTarea = 0;
+                    }
+                }
+
+                if (Math.random() < 0.01 && !evento && !tareaActual && eventosAleatorios.length > 0) {
+                    evento = eventosAleatorios[Math.floor(Math.random() * eventosAleatorios.length)];
+                    mostrarMensaje(`¡Evento inesperado: ${evento.nombre}!`);
+                }
+
+                if (evento) {
+                    progresoTarea += MINUTOS_POR_ACTUALIZACION;
+                    if (progresoTarea >= evento.duracion) {
+                        mostrarMensaje(`Evento finalizado: ${evento.nombre}`);
+                        evento = null;
+                        progresoTarea = 0;
+                    }
+                }
+
+                actualizarUI();
+              
+              
+              // actualizarUI();
+                actualizarBotonesTareas();
+            }, INTERVALO_ACTUALIZACION);
+        }
+
+        function finalizarSimulacion() {
+            clearInterval(intervalId);
+            mostrarMensaje('¡El día ha terminado!');
+            document.querySelectorAll('button:not(#agregarTarea):not(#agregarEvento)').forEach(btn => btn.disabled = true);
+        }
+
+        iniciarSimulacion();
+    </script>
+</body>
+</html>
